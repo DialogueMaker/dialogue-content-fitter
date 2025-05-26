@@ -1,0 +1,13 @@
+{
+  "name": "dialogue-content-fitter",
+  "tree": {
+    "$className": "DataModel",
+    "dialogue-content-fitter": {
+      "$path": "Packages",
+      "$ignoreUnknownInstances": true,
+      "dialogue-content-fitter": {
+        "$path": "src"
+      }
+    }
+  }
+}

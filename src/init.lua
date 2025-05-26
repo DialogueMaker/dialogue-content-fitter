@@ -1,11 +1,7 @@
 --!strict
 
-local StarterPlayer = game:GetService("StarterPlayer");
-local StarterPlayerScripts = StarterPlayer.StarterPlayerScripts;
-
-local DialogueClientScript = StarterPlayerScripts.DialogueClientScript;
-local IDialogueContentFitter = require(DialogueClientScript.Packages["dialogue-content-fitter-types"]);
-local IEffect = require(DialogueClientScript.Packages["effect-types"]);
+local IDialogueContentFitter = require(script.Parent["dialogue-content-fitter-types"]);
+local IEffect = require(script.Parent["effect-types"]);
 
 type DialogueContentFitter = IDialogueContentFitter.DialogueContentFitter;
 type Page = IEffect.Page;
