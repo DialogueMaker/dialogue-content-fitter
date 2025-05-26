@@ -2,18 +2,16 @@
   "name": "dialogue-content-fitter",
   "tree": {
     "$className": "DataModel",
-    "ReplicatedStorage": {
+    "StarterPlayer": {
       "StarterPlayerScripts": {
         "DialogueClientScript": {
           "$className": "LocalScript",
-          "Classes": {
-            "$className": "Folder",
-            "ShakingEffect": {
+          "Packages": {
+            "$path": "Packages",
+            "$ignoreUnknownInstances": true,
+            "dialogue-content-fitter": {
               "$path": "src"
             }
-          },
-          "Packages": {
-            "$path": "Packages"
           }
         }
       }
