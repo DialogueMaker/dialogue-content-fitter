@@ -1,0 +1,9 @@
+[package]
+name = "dialoguemaker/dialogue-content-fitter"
+version = "0.1.0"
+registry = "https://github.com/UpliftGames/wally-index"
+realm = "shared"
+
+[dependencies]
+dialogue-content-fitter-types = "dialoguemaker/dialogue-content-fitter-types@0.1.0"
+effect-types = "dialoguemaker/effect-types@0.1.0"

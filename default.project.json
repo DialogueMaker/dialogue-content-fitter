@@ -1,0 +1,22 @@
+{
+  "name": "dialogue-content-fitter",
+  "tree": {
+    "$className": "DataModel",
+    "ReplicatedStorage": {
+      "StarterPlayerScripts": {
+        "DialogueClientScript": {
+          "$className": "LocalScript",
+          "Classes": {
+            "$className": "Folder",
+            "ShakingEffect": {
+              "$path": "src"
+            }
+          },
+          "Packages": {
+            "$path": "Packages"
+          }
+        }
+      }
+    }
+  }
+}
