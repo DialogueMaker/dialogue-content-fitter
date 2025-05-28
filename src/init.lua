@@ -1,7 +1,7 @@
 --!strict
 
-local IDialogueContentFitter = require(script.Parent["dialogue-content-fitter-types"]);
-local IEffect = require(script.Parent["effect-types"]);
+local IDialogueContentFitter = require("@pkg/dialogue_content_fitter_types");
+local IEffect = require("@pkg/effect_types");
 
 type DialogueContentFitter = IDialogueContentFitter.DialogueContentFitter;
 type Page = IEffect.Page;
