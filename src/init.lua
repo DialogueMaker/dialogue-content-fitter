@@ -1,7 +1,8 @@
 --!strict
 
-local IDialogueContentFitter = require("@pkg/dialogue_content_fitter_types");
-local IEffect = require("@pkg/effect_types");
+local packages = script.Parent.roblox_packages;
+local IDialogueContentFitter = require(packages.dialogue_content_fitter_types);
+local IEffect = require(packages.effect_types);
 
 type DialogueContentFitter = IDialogueContentFitter.DialogueContentFitter;
 type Page = IEffect.Page;
