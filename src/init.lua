@@ -28,25 +28,25 @@ function DialogueContentFitter.new(contentContainer: GuiObject, textLabel: TextL
     contentContainer.Parent = contentContainerParent;
 
     local pages: {Page} = {{}};
-    
+
     DialogueContentFitter:cleanContentContainer(contentContainer);
-    
+
     for _, rawComponent in rawPage do
-      
+
       if typeof(rawComponent) == "string" then 
-        
+
         contentContainer, pages = DialogueContentFitter:fitText(rawComponent, contentContainer, textLabel, pages);
-      
+
       else
-        
+
         contentContainer, pages = rawComponent:fit(contentContainer, textLabel, pages);
 
       end;
-      
+
     end
 
     contentContainer:Destroy();
-    
+
     return pages;
 
   end;
@@ -64,7 +64,7 @@ end;
 function DialogueContentFitter:cleanContentContainer(contentContainer: GuiObject): ()
 
   for _, child in contentContainer:GetChildren() do
-  
+
     if child:IsA("GuiObject") then
 
       child:Destroy();
@@ -103,33 +103,139 @@ function DialogueContentFitter:clonePages(pages: {Page}): {Page}
 
 end;
 
-function DialogueContentFitter:fitText(text: string, contentContainer: GuiObject, textLabel: TextLabel, pages: {Page}): (GuiObject, {Page})
+function DialogueContentFitter:fitText(text: string, contentContainer: GuiObject, textLabelTemplate: TextLabel, pages: {Page}): (GuiObject, {Page})
 
   pages = self:clonePages(pages);
   local uiListLayout = contentContainer:FindFirstChildOfClass("UIListLayout");
   assert(uiListLayout, "[Dialogue Maker] Content container must have a UIListLayout to fit text.");
 
-  local lastSpaceIndex: number? = nil;
+  -- Measure the content container size.
+  local contentContainerChildren = contentContainer:GetChildren();
+  local function setContentContainerChildrenParent(parent: Instance?)
+    
+    for _, child in contentContainerChildren do
+
+      if child:IsA("GuiObject") then
+
+        child.Parent = parent;
+
+      end
+
+    end
+
+  end;
+  setContentContainerChildrenParent(nil);
+
+  local frame = Instance.new("Frame");
+  frame.Size = UDim2.fromScale(1, 1);
+  frame.Parent = contentContainer;
+  
+  local canvasSize = frame.AbsoluteSize;
+  local startingAbsolutePosition = frame.AbsolutePosition;
+
+  frame:Destroy();
+
+  setContentContainerChildrenParent(contentContainer);
+  
+  -- Fit the text into the content container.
+  local canCreateUISizeConstraint = true;
+  local remainingText: string = text;
 
   repeat
-    
-    textLabel = textLabel:Clone();
-    textLabel.Visible = true;
-    textLabel.Text = if lastSpaceIndex then text:sub(lastSpaceIndex + 1) else text;
-    textLabel.Parent = contentContainer;
-    
-    -- Check if we should add a new page.
-    local isContainerOverflowing = uiListLayout.AbsoluteContentSize.Y > contentContainer.AbsoluteSize.Y;
-    if not textLabel.TextFits and isContainerOverflowing then
 
-      table.insert(pages, {});
-      self:cleanContentContainer(contentContainer);
+    local textLabel = textLabelTemplate:Clone();
+    textLabel.Visible = true;
+    textLabel.Text = "";
+    textLabel.Parent = contentContainer;
+
+    -- Constrain the text label if there is another UI element to the left of it.
+    -- This ensures the text doesn't wrap in the middle of the container.
+    local uiSizeConstraint: UISizeConstraint?;
+    if canCreateUISizeConstraint and textLabel.AbsolutePosition.X > startingAbsolutePosition.X then
+
+      textLabel.TextWrapped = false;
+
+      local newUISizeConstraint = Instance.new("UISizeConstraint");
+      newUISizeConstraint.MaxSize = Vector2.new(canvasSize.X - (textLabel.AbsolutePosition.X - startingAbsolutePosition.X), math.huge);
+      newUISizeConstraint.Parent = textLabel;
+      uiSizeConstraint = newUISizeConstraint;
+
+    else
       
-    end
+      if not canCreateUISizeConstraint then
+
+        canCreateUISizeConstraint = true;
+
+      end;
+
+      textLabel.TextWrapped = true;
+
+    end;
     
-    if textLabel.TextFits then
-      
-      local function getRichTextIndices(text: string)
+    textLabel.Text = remainingText;
+
+    -- If the text label fits, then we have enough components and pages.
+    if textLabel.TextFits and uiListLayout.AbsoluteContentSize.Y <= canvasSize.Y then
+
+      remainingText = "";
+
+    else
+
+      -- Remove a word from the text until the text fits.
+      local lastSpaceIndex = 0;
+      local shouldCreateNewPage = false;
+      repeat
+
+        local _, newLastSpaceIndex = textLabel.Text:find(".* ");
+
+        if newLastSpaceIndex then
+
+          lastSpaceIndex = newLastSpaceIndex;
+          textLabel.Text = textLabel.Text:sub(1, lastSpaceIndex - 1);
+
+        elseif uiSizeConstraint then
+          
+          canCreateUISizeConstraint = false;
+
+        elseif uiListLayout.AbsoluteContentSize.Y > canvasSize.Y then
+
+          shouldCreateNewPage = true;
+
+        else
+
+          error("[Dialogue Maker] Unable to fit text in container even after removing the spaces. The text might be too big or the text container might be too small.");
+
+        end;
+
+      until (textLabel.TextFits and uiListLayout.AbsoluteContentSize.Y <= canvasSize.Y) or shouldCreateNewPage or not canCreateUISizeConstraint;
+
+      -- If needed, try again without the UISizeConstraint so the text can use a new line.
+      if not canCreateUISizeConstraint then
+
+        textLabel:Destroy();
+        continue;
+
+      end;
+
+      if shouldCreateNewPage then
+
+        -- The text still doesn't fit, so we need to create a new page.
+        table.insert(pages, {});
+        self:cleanContentContainer(contentContainer);
+        continue;
+
+      end;
+
+      -- Save the unused text for the next component.
+      remainingText = remainingText:sub(lastSpaceIndex + 1);
+
+    end;
+
+    -- If the text has multiple lines, create another TextLabel to replace the last line of text.
+    -- This allows inlined components. Remember how we used the UISizeConstraint to limit the text width?
+    local function getLineBreakPositions(text: string): {number}
+
+      local function getRichTextIndices(text: string): {RichTextTag}
 
         local richTextTagIndices: {RichTextTag} = {};
         local openTagIndices: {number} = {};
@@ -197,189 +303,155 @@ function DialogueContentFitter:fitText(text: string, contentContainer: GuiObject
 
       end
 
-      local function getLineBreakPositions(text: string): {number}
+      local restoredComponents = {};
+      for _, component in pages[#pages] do
 
-        local restoredComponents = {};
-        for _, component in pages[#pages] do
+        if typeof(component) == "string" then
 
-          if typeof(component) == "string" then
+          local TextLabel = textLabel:Clone();
+          TextLabel.Text = component;
+          TextLabel.Parent = contentContainer;
+          table.insert(restoredComponents, TextLabel);
 
-            local TextLabel = textLabel:Clone();
-            TextLabel.Text = component;
-            TextLabel.Parent = contentContainer;
-            table.insert(restoredComponents, TextLabel);
+        end
+
+      end;
+
+      -- Iterate through each character.
+      local breakpoints: {number} = {};
+      local lastSpaceIndex: number = 1;
+      local skipCounter = 0;
+      local remainingRichTextTags = getRichTextIndices(text);
+      textLabel.Text = "";
+
+      for index, character in text:split("") do
+
+        -- Check if this is an offset.
+        if skipCounter > 0 then
+
+          skipCounter -= 1;
+          continue;
+
+        end
+
+        if textLabel.RichText then
+
+          for _, richTextTagIndex in remainingRichTextTags do
+
+            if richTextTagIndex.startOffset == index then
+
+              skipCounter = (`<{richTextTagIndex.name}{if richTextTagIndex.attributes and richTextTagIndex.attributes ~= "" then ` {richTextTagIndex.attributes}` else ""}>`):len() - 1;
+              break;
+
+            elseif richTextTagIndex.endOffset :: number - (`</{richTextTagIndex.name}>`):len() == index then
+
+              skipCounter = (`</{richTextTagIndex.name}>`):len() - 1;
+              break;
+
+            end
 
           end
 
         end;
 
-        -- Iterate through each character.
-        local breakpoints: {number} = {};
-        local lastSpaceIndex: number = 1;
-        local skipCounter = 0;
-        local remainingRichTextTags = getRichTextIndices(text);
-        textLabel.Text = "";
+        if skipCounter > 0 then
 
-        for index, character in text:split("") do
-
-          -- Check if this is an offset.
-          if skipCounter > 0 then
-
-            skipCounter -= 1;
-            continue;
-
-          end
-
-          if textLabel.RichText then
-
-            for _, richTextTagIndex in remainingRichTextTags do
-
-              if richTextTagIndex.startOffset == index then
-
-                skipCounter = (`<{richTextTagIndex.name}{if richTextTagIndex.attributes and richTextTagIndex.attributes ~= "" then ` {richTextTagIndex.attributes}` else ""}>`):len() - 1;
-                break;
-
-              elseif richTextTagIndex.endOffset :: number - (`</{richTextTagIndex.name}>`):len() == index then
-
-                skipCounter = (`</{richTextTagIndex.name}>`):len() - 1;
-                break;
-
-              end
-
-            end
-
-          end;
-
-          if skipCounter > 0 then
-
-            continue;
-
-          end
-
-          -- Keep track of spaces.
-          if character == " " then
-
-            lastSpaceIndex = index;
-
-          end
-
-          -- Keep track of the original text bounds.
-          local originalAbsoluteContentSize = uiListLayout.AbsoluteContentSize;
-
-          -- Add a character and reformat the text.
-          textLabel.Text = textLabel.ContentText .. character;
-          if textLabel.RichText then
-
-            for _, richTextTagInfo in remainingRichTextTags do
-              
-              local tagStartOffset = richTextTagInfo.startOffset;
-              local tagEndOffset = richTextTagInfo.endOffset :: number;
-              if index >= tagStartOffset and tagEndOffset > (breakpoints[#breakpoints] or 0) then
-
-                local prefix = `<{richTextTagInfo.name}{if richTextTagInfo.attributes and richTextTagInfo.attributes ~= "" then ` {richTextTagInfo.attributes}` else ""}>`;
-                local suffix = `</{richTextTagInfo.name}>`;
-                local startOffset = tagStartOffset - (breakpoints[#breakpoints] or 0);
-                local endOffset = (tagEndOffset - (breakpoints[#breakpoints] or 0)) - prefix:len() - suffix:len();
-                textLabel.Text = textLabel.ContentText:sub(1, startOffset - 1) .. prefix .. textLabel.ContentText:sub(startOffset, endOffset - 1) .. suffix .. textLabel.ContentText:sub(endOffset);
-
-              end
-
-            end
-
-          end;
-
-          if uiListLayout.AbsoluteContentSize.Y ~= originalAbsoluteContentSize.Y then
-
-            uiListLayout.Wraps = false;
-            uiListLayout.Wraps = true;
-
-          end
-
-          -- From here, we can guess for a line break because the Y axis of 
-          -- the UIListLayout's content size will change if the character causes a line break.
-          if uiListLayout.AbsoluteContentSize.Y > originalAbsoluteContentSize.Y then
-
-            -- We should check again with unwrapped text to ensure that 
-            -- rich text didn't cause the line break.
-            local wrappedAbsoluteContentSize = uiListLayout.AbsoluteContentSize;
-
-            textLabel.TextWrapped = false;
-
-            if uiListLayout.AbsoluteContentSize.Y < wrappedAbsoluteContentSize.Y then
-              
-              table.insert(breakpoints, lastSpaceIndex);
-              textLabel.Text = text:sub(lastSpaceIndex + 1, index);
-
-            end
-
-            textLabel.TextWrapped = true;
-
-          end
-
-        end
-        
-        textLabel.Text = text;
-
-        for _, restoredComponent in restoredComponents do
-
-          restoredComponent:Destroy();
+          continue;
 
         end
 
-        return breakpoints;
+        -- Keep track of spaces.
+        if character == " " then
+
+          lastSpaceIndex = index;
+
+        end
+
+        -- Keep track of the original text bounds.
+        local originalAbsoluteContentSize = uiListLayout.AbsoluteContentSize;
+
+        -- Add a character and reformat the text.
+        textLabel.Text = textLabel.ContentText .. character;
+        if textLabel.RichText then
+
+          for _, richTextTagInfo in remainingRichTextTags do
+
+            local tagStartOffset = richTextTagInfo.startOffset;
+            local tagEndOffset = richTextTagInfo.endOffset :: number;
+            if index >= tagStartOffset and tagEndOffset > (breakpoints[#breakpoints] or 0) then
+
+              local prefix = `<{richTextTagInfo.name}{if richTextTagInfo.attributes and richTextTagInfo.attributes ~= "" then ` {richTextTagInfo.attributes}` else ""}>`;
+              local suffix = `</{richTextTagInfo.name}>`;
+              local startOffset = tagStartOffset - (breakpoints[#breakpoints] or 0);
+              local endOffset = (tagEndOffset - (breakpoints[#breakpoints] or 0)) - prefix:len() - suffix:len();
+              textLabel.Text = textLabel.ContentText:sub(1, startOffset - 1) .. prefix .. textLabel.ContentText:sub(startOffset, endOffset - 1) .. suffix .. textLabel.ContentText:sub(endOffset);
+
+            end
+
+          end
+
+        end;
+
+        if uiListLayout.AbsoluteContentSize.Y ~= originalAbsoluteContentSize.Y then
+
+          uiListLayout.Wraps = false;
+          uiListLayout.Wraps = true;
+
+        end
+
+        -- From here, we can guess for a line break because the Y axis of 
+        -- the UIListLayout's content size will change if the character causes a line break.
+        if uiListLayout.AbsoluteContentSize.Y > originalAbsoluteContentSize.Y then
+
+          -- We should check again with unwrapped text to ensure that 
+          -- rich text didn't cause the line break.
+          local wrappedAbsoluteContentSize = uiListLayout.AbsoluteContentSize;
+
+          textLabel.TextWrapped = false;
+
+          if uiListLayout.AbsoluteContentSize.Y < wrappedAbsoluteContentSize.Y then
+
+            table.insert(breakpoints, lastSpaceIndex);
+            textLabel.Text = text:sub(lastSpaceIndex + 1, index);
+
+          end
+
+          textLabel.TextWrapped = true;
+
+        end
 
       end
 
-      local originalText = textLabel.Text;
-      local lineBreaks = getLineBreakPositions(originalText);
-      local lastLineBreakIndex = lineBreaks[#lineBreaks];
-      
-      if lastLineBreakIndex then
-        
-        -- Create another TextLabel to replace the last line of text.
-        -- Otherwise, the TextLabel might take up too much space on the Y axis.
-        local paragraphTextLabel = textLabel:Clone();
-        paragraphTextLabel.Text = originalText:sub(1, lastLineBreakIndex);
-        paragraphTextLabel.Parent = textLabel.Parent;
-        table.insert(pages[#pages], paragraphTextLabel.Text);
-        
-        -- Put the remaining text in the original TextLabel.
-        textLabel.Text = originalText:sub(lastLineBreakIndex + 1);
-        
-      end;
+      textLabel.Text = text;
 
-      table.insert(pages[#pages], textLabel.Text);
-      
-      lastSpaceIndex = nil;
-      
-    else
-      
-      -- Remove a word from the text until we can fit the text.
-      lastSpaceIndex = 0;
-      repeat
+      for _, restoredComponent in restoredComponents do
 
-        lastSpaceIndex = table.pack(textLabel.Text:find(".* "))[2] :: number;
-        
-        if not lastSpaceIndex and textLabel.TextBounds.Y < textLabel.TextSize * textLabel.LineHeight then
-          
-          -- The given area is too small. Add this to a new page.
-          table.insert(pages, {});
-          self:cleanContentContainer(contentContainer);
-          continue;
-          
-        end
+        restoredComponent:Destroy();
 
-        assert(lastSpaceIndex, "[Dialogue Maker] Unable to fit text in text container even after removing the spaces. The text might be too big or the text container might be too small.");
-        textLabel.Text = textLabel.Text:sub(1, lastSpaceIndex - 1);
-        
-      until textLabel.TextFits;
-      
-      -- Add the remaining text to a new page.
-      table.insert(pages[#pages], textLabel.Text);
-      
+      end
+
+      return breakpoints;
+
     end
 
-  until not lastSpaceIndex;
+    local lineBreaks = getLineBreakPositions(textLabel.Text);
+    local lastLineBreakIndex = lineBreaks[#lineBreaks];
+
+    if lastLineBreakIndex then
+
+      local paragraphTextLabel = textLabel:Clone();
+      paragraphTextLabel.Text = textLabel.Text:sub(1, lastLineBreakIndex);
+      paragraphTextLabel.Parent = textLabel.Parent;
+      table.insert(pages[#pages], paragraphTextLabel.Text);
+
+      -- Put the remaining text in the original TextLabel.
+      textLabel.Text = textLabel.Text:sub(lastLineBreakIndex + 1);
+
+    end;
+
+    table.insert(pages[#pages], textLabel.Text);
+
+  until remainingText == "";
 
   return contentContainer, pages;
 
