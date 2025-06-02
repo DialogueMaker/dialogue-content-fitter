@@ -171,7 +171,7 @@ function DialogueContentFitter:getRichTextTags(text: string): {RichTextTag}
 
 end;
 
-function DialogueContentFitter:getLineBreakIndices(textLabel: TextLabel, uiListLayout: UIListLayout): {number}
+function DialogueContentFitter:getLineBreakIndices(textLabel: TextLabel): {number}
 
   -- Iterate through each character.
   local breakpoints: {number} = {};
@@ -225,7 +225,7 @@ function DialogueContentFitter:getLineBreakIndices(textLabel: TextLabel, uiListL
     end
 
     -- Keep track of the original text bounds.
-    local originalAbsoluteContentSize = uiListLayout.AbsoluteContentSize;
+    local originalTextBounds = textLabel.TextBounds;
 
     -- Add a character and reformat the text.
     textLabel.Text = textLabel.ContentText .. character;
@@ -249,24 +249,24 @@ function DialogueContentFitter:getLineBreakIndices(textLabel: TextLabel, uiListL
 
     end;
 
-    if uiListLayout.AbsoluteContentSize.Y ~= originalAbsoluteContentSize.Y then
+    if textLabel.TextBounds.Y ~= originalTextBounds.Y then
 
-      uiListLayout.Wraps = false;
-      uiListLayout.Wraps = true;
+      textLabel.TextWrapped = false;
+      textLabel.TextWrapped = true;
 
     end
 
     -- From here, we can guess for a line break because the Y axis of 
     -- the UIListLayout's content size will change if the character causes a line break.
-    if uiListLayout.AbsoluteContentSize.Y > originalAbsoluteContentSize.Y then
+    if textLabel.TextBounds.Y > originalTextBounds.Y then
 
       -- We should check again with unwrapped text to ensure that 
       -- rich text didn't cause the line break.
-      local wrappedAbsoluteContentSize = uiListLayout.AbsoluteContentSize;
+      local wrappedTextBounds = textLabel.TextBounds;
 
       textLabel.TextWrapped = false;
 
-      if uiListLayout.AbsoluteContentSize.Y < wrappedAbsoluteContentSize.Y then
+      if textLabel.TextBounds.Y < wrappedTextBounds.Y then
 
         table.insert(breakpoints, lastSpaceIndex);
         textLabel.Text = originalText:sub(lastSpaceIndex + 1, index);
@@ -388,7 +388,7 @@ function DialogueContentFitter:fitText(text: string, contentContainer: GuiObject
 
     -- If the text has multiple lines, create another TextLabel to replace the last line of text.
     -- This allows inlined components. Remember how we used the UISizeConstraint to limit the text width?
-    local lineBreaks = DialogueContentFitter:getLineBreakIndices(textLabel, uiListLayout);
+    local lineBreaks = DialogueContentFitter:getLineBreakIndices(textLabel);
     local lastLineBreakIndex = lineBreaks[#lineBreaks];
 
     local function addLineHeight(textLabel: TextLabel)
