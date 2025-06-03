@@ -1,12 +1,11 @@
 --!strict
 
 local packages = script.Parent.roblox_packages;
-local IDialogueContentFitter = require(packages.dialogue_content_fitter_types);
-local IEffect = require(packages.effect_types);
+local DialogueMakerTypes = require(packages.dialogue_maker_types);
 
-type DialogueContentFitter = IDialogueContentFitter.DialogueContentFitter;
-type Page = IEffect.Page;
-type RichTextTag = IDialogueContentFitter.RichTextTag;
+type DialogueContentFitter = DialogueMakerTypes.DialogueContentFitter;
+type Page = DialogueMakerTypes.Page;
+type RichTextTag = DialogueMakerTypes.RichTextTag;
 
 local DialogueContentFitter = {};
 
